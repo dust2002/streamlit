@@ -32,10 +32,10 @@ st.markdown(
 # ----------------------------------
 
 def get_llm(temp=0):
-return ChatOpenAI(
-model="gpt-4o-mini",
-temperature=temp
-)
+    return ChatOpenAI(
+    model="gpt-4o-mini",
+    temperature=temp
+    )
 
 # ----------------------------------
 
