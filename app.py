@@ -1,65 +1,280 @@
 
-import traceback
 import streamlit as st
+import yfinance as yf
+from dotenv import load_dotenv
+
+from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_openai import ChatOpenAI
-import requests
-from bs4 import BeautifulSoup
-from urllib.parse import urlparse
-from dotenv import load_dotenv
 
 load_dotenv()
 
-# 1. 프롬프트 개선 (출력 형식을 조금 더 명확하게 지시)
-SUMMARIZE_PROMPT = """다음 제공된 콘텐츠의 핵심 내용을 약 300자 내외로 알기 쉽게 요약해주세요.
-반드시 한국어로 자연스럽게 작성해야 합니다.
+# ----------------------------------
 
-========
-{content}
-========
+# 페이지 설정
+
+# ----------------------------------
+
+st.set_page_config(
+page_title="AI 주식 분석기",
+page_icon="📈"
+)
+
+st.header("📈 AI 주식 분석기")
+st.markdown(
+"종목명 또는 티커를 입력하면 최근 1주일 주가 데이터와 AI 투자 의견을 제공합니다."
+)
+
+# ----------------------------------
+
+# GPT 모델
+
+# ----------------------------------
+
+def get_llm(temp=0):
+return ChatOpenAI(
+model="gpt-4o-mini",
+temperature=temp
+)
+
+# ----------------------------------
+
+# 종목명 -> 티커 변환 프롬프트
+
+# ----------------------------------
+
+TICKER_PROMPT = """
+당신은 Yahoo Finance 티커 전문가입니다.
+
+사용자가 입력한 기업명 또는 티커를
+Yahoo Finance 티커로 변환하세요.
+
+규칙:
+
+1. 티커만 출력
+2. 설명 금지
+3. 삼성전자 -> 005930.KS
+4. SK하이닉스 -> 000660.KS
+5. 애플 -> AAPL
+6. 엔비디아 -> NVDA
+7. 테슬라 -> TSLA
+
+입력:
+{company}
 """
 
-def init_page():
-    st.set_page_config(page_title="웹 사이트 요약기", page_icon="🤗")
-    st.header("웹 사이트 요약기 🤗")
-    st.sidebar.title("Options")
+# ----------------------------------
 
-def select_model(temperature = 0):
-    models = ("gpt-5.5", "gpt-5.4-mini")
-    model = st.sidebar.radio("Choose a model:", models)
-    if model == 'gpt-5.5':
-        return ChatOpenAI(temperature = temperature, model = 'gpt-5.5')
-    else:
-        return ChatOpenAI(temperature = temperature, model = 'gpt-5.4-mini')
+# 투자 분석 프롬프트
 
-def init_chain():
-    llm = select_model()
-    prompt = ChatPromptTemplate.from_messages([
-        ('user', SUMMARIZE_PROMPT)])
-    chain = prompt | llm | StrOutputParser()
-    return chain
+# ----------------------------------
 
-def get_content(url):
-    with st.spinner('웹 사이트 정보 찾는중...'):
-        url = requests.get(url)
-        html = BeautifulSoup(url.text)
-        if html.main:
-            return html.main.text
-        elif html.article:
-            return html.article.text
-        else:
-            return html.body.text
+ANALYSIS_PROMPT = """
+당신은 금융 데이터 분석 전문가입니다.
+
+주식명:
+{stock_name}
+
+최근 1주일 데이터:
+{data}
+
+다음 형식으로 답변하세요.
+
+### 최근 주가 흐름
+
+최근 가격 변동을 요약
+
+### 거래량 분석
+
+거래량 특징 설명
+
+### 긍정적 요소
+
+상승 가능 요인
+
+### 부정적 요소
+
+하락 위험 요인
+
+### AI 투자 참고 의견
+
+매수 / 보유 / 매도 중 하나 선택
+
+선택 이유를 자세히 설명하세요.
+
+마지막에 아래 문구를 포함하세요.
+
+"본 의견은 투자 권유가 아닌 참고용 분석입니다."
+"""
+
+# ----------------------------------
+
+# 티커 변환
+
+# ----------------------------------
+
+def company_to_ticker(company):
+
+```
+llm = get_llm()
+
+prompt = ChatPromptTemplate.from_template(
+    TICKER_PROMPT
+)
+
+chain = (
+    prompt
+    | llm
+    | StrOutputParser()
+)
+
+ticker = chain.invoke(
+    {
+        "company": company
+    }
+)
+
+return ticker.strip()
+```
+
+# ----------------------------------
+
+# 투자 분석 체인
+
+# ----------------------------------
+
+def get_analysis_chain():
+
+```
+llm = get_llm(0.2)
+
+prompt = ChatPromptTemplate.from_template(
+    ANALYSIS_PROMPT
+)
+
+chain = (
+    prompt
+    | llm
+    | StrOutputParser()
+)
+
+return chain
+```
+
+# ----------------------------------
+
+# 주가 데이터 조회
+
+# ----------------------------------
+
+def get_stock_data(ticker):
+
+```
+stock = yf.Ticker(ticker)
+
+hist = stock.history(period="7d")
+
+if hist.empty:
+    return None, None
+
+try:
+    stock_name = stock.info.get(
+        "longName",
+        ticker
+    )
+except:
+    stock_name = ticker
+
+return stock_name, hist
+```
+
+# ----------------------------------
+
+# 메인
+
+# ----------------------------------
 
 def main():
-    init_page()
-    chain = init_chain()
-    if url := st.text_input("URL: ", key = 'input'):
-        if content := get_content(url):
-            st.markdown("## Summary")
-            st.write_stream(chain.stream({'content' : content}))
-            st.markdown("-----")
-            st.markdown("## Original Text")
-            st.write(content)
 
+```
+user_input = st.text_input(
+    "종목명 또는 티커 입력",
+    placeholder="예: 삼성전자, 애플, 엔비디아, Tesla, AAPL"
+)
+
+if st.button("분석하기"):
+
+    if not user_input:
+        st.warning("종목명을 입력하세요.")
+        return
+
+    with st.spinner("종목 검색 중..."):
+        ticker = company_to_ticker(
+            user_input
+        )
+
+    st.success(f"조회 티커: {ticker}")
+
+    with st.spinner("주가 데이터 수집 중..."):
+        stock_name, hist = get_stock_data(
+            ticker
+        )
+
+    if hist is None:
+        st.error(
+            "주가 데이터를 찾을 수 없습니다."
+        )
+        return
+
+    st.subheader("최근 1주일 거래 데이터")
+
+    st.dataframe(
+        hist[
+            [
+                "Open",
+                "High",
+                "Low",
+                "Close",
+                "Volume"
+            ]
+        ]
+    )
+
+    st.subheader("종가 추이")
+
+    st.line_chart(
+        hist["Close"]
+    )
+
+    data_text = hist[
+        [
+            "Open",
+            "High",
+            "Low",
+            "Close",
+            "Volume"
+        ]
+    ].to_string()
+
+    chain = get_analysis_chain()
+
+    with st.spinner("AI 분석 중..."):
+
+        result = chain.invoke(
+            {
+                "stock_name": stock_name,
+                "data": data_text
+            }
+        )
+
+    st.subheader("🤖 AI 투자 의견")
+
+    st.write(result)
+
+    st.info(
+        "본 서비스는 교육용 프로젝트이며 투자 권유 서비스가 아닙니다."
+    )
+```
+
+if **name** == "**main**":
 main()

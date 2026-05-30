@@ -1,6 +1,6 @@
 streamlit
-langchain_core
-langchain-openai
-tiktoken
+yfinance 
+pandas 
+langchain-openai 
+langchain-core 
 python-dotenv
-bs4
